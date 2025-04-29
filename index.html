@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Symphony</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #app {
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+        }
+
+        .cosmic {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+        }
+
+        .glow-btn {
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #ff6ec4, #7873f5);
+            border: none;
+            border-radius: 50px;
+            padding: 0.75rem 1.5rem;
+            color: white;
+            cursor: pointer;
+        }
+
+        .glow-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        .emotion-btn {
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            color: white;
+            cursor: pointer;
+        }
+
+        .emotion-btn:hover {
+            transform: scale(1.05);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        @media (max-width: 640px) {
+            #ui {
+                padding: 1rem;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .cosmic {
+                width: 100%;
+                max-width: none;
+            }
+
+            input {
+                width: 100%;
+            }
+
+            .glow-btn,
+            .emotion-btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            #emotionList {
+                flex-direction: column;
+            }
+        }
+
+        @media (min-width: 641px) and (max-width: 1024px) {
+            #ui {
+                padding: 2rem;
+            }
+
+            .cosmic {
+                max-width: 50%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="bg-black text-white font-sans">
+        <canvas id="canvas"></canvas>
+        <div id="ui" class="p-6 flex flex-col gap-6 w-full h-full justify-center items-center">
+            <div class="cosmic p-6 rounded-lg w-full md:w-1/2 lg:w-1/3">
+                <h1 class="text-3xl font-bold mb-3">Emotion Symphony</h1>
+                <p class="text-base mb-4">Express your emotions, and let them create a cosmic symphony!</p>
+                <div id="emotionList" class="flex flex-wrap gap-2 mb-4">
+                    <button class="emotion-btn" data-emotion="joy">Joy</button>
+                    <button class="emotion-btn" data-emotion="sadness">Sadness</button>
+                    <button class="emotion-btn" data-emotion="anger">Anger</button>
+                    <button class="emotion-btn" data-emotion="calm">Calm</button>
+                </div>
+                <input id="customEmotion" class="w-full p-3 bg-transparent border border-gray-500 rounded-lg text-white"
+                    placeholder="Or type a custom emotion...">
+                <div class="flex gap-3 mt-4">
+                    <button id="createBtn" class="glow-btn">Create Symphony</button>
+                    <button id="therapeuticBtn" class="glow-btn">Therapeutic Mode</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Three.js Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.position.z = 5;
+
+        // Web Audio API Setup
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let oscillator, gainNode;
+
+        // Particle System
+        let particles = [];
+        let particleGeometry = new THREE.BufferGeometry();
+        let positions = [];
+        let colors = [];
+        const particleCount = 500;
+
+        for (let i = 0; i < particleCount; i++) {
+            positions.push(
+                (Math.random() * 10 - 5),
+                (Math.random() * 10 - 5),
+                (Math.random() * 10 - 5)
+            );
+            colors.push(1, 1, 1);
+        }
+
+        particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        particleGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        const particleMaterial = new THREE.PointsMaterial({ size: 0.1, vertexColors: true });
+        const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particleSystem);
+
+        // Emotion to Visual/Sound Mapping
+        const emotionMap = {
+            joy: { color: 0xffff00, frequency: 440, speed: 0.05 },
+            sadness: { color: 0x0000ff, frequency: 220, speed: 0.02 },
+            anger: { color: 0xff0000, frequency: 880, speed: 0.1 },
+            calm: { color: 0x00ff00, frequency: 110, speed: 0.01 },
+        };
+
+        function createSymphony(emotion) {
+            // Stop previous sound
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                gainNode.disconnect();
+            }
+
+            // Map emotion to visuals and sound
+            let config = emotionMap[emotion.toLowerCase()] || {
+                color: 0xffffff,
+                frequency: 330,
+                speed: 0.03
+            };
+
+            // Update particle colors
+            const newColors = [];
+            const rgb = new THREE.Color(config.color);
+            for (let i = 0; i < particleCount; i++) {
+                newColors.push(rgb.r, rgb.g, rgb.b);
+            }
+            particleGeometry.setAttribute('color', new THREE.Float32BufferAttribute(newColors, 3));
+            particleMaterial.size = config.speed * 2;
+
+            // Create sound
+            oscillator = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(config.frequency, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.currentTime ? audioCtx.destination : audioCtx);
+            oscillator.start();
+
+            // Update scene background
+            scene.background = new THREE.Color(config.color).multiplyScalar(0.2);
+        }
+
+        // Animation Loop
+        let therapeuticActive = false;
+        function animate() {
+            requestAnimationFrame(animate);
+            const positions = particleGeometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] += Math.sin(Date.now() * 0.001 + i) * (therapeuticActive ? 0.01 : 0.03);
+                positions[i + 1] += Math.cos(Date.now() * 0.001 + i) * (therapeuticActive ? 0.01 : 0.03);
+                positions[i + 2] += Math.sin(Date.now() * 0.001 + i) * (therapeuticActive ? 0.01 : 0.03);
+
+                if (positions[i] > 5 || positions[i] < -5) positions[i] *= -1;
+                if (positions[i + 1] > 5 || positions[i + 1] < -5) positions[i + 1] *= -1;
+                if (positions[i + 2] > 5 || positions[i + 2] < -5) positions[i + 2] *= -1;
+            }
+            particleGeometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Interactive Evolution
+        function onMouseMove(event) {
+            const x = (event.clientX / window.innerWidth) * 2 - 1;
+            const y = -(event.clientY / window.innerHeight) * 2 + 1;
+            camera.position.x = x * 2;
+            camera.position.y = y * 2;
+            camera.lookAt(0, 0, 0);
+            if (oscillator) {
+                oscillator.frequency.setValueAtTime(220 + x * 220, audioCtx.currentTime);
+            }
+        }
+
+        // Therapeutic Mode
+        function toggleTherapeutic() {
+            therapeuticActive = !therapeuticActive;
+            if (therapeuticActive) {
+                document.getElementById('therapeuticBtn').textContent = 'Exit Therapeutic';
+                if (gainNode) gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            } else {
+                document.getElementById('therapeuticBtn').textContent = 'Therapeutic Mode';
+                if (gainNode) gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('createBtn').addEventListener('click', () => {
+            const customEmotion = document.getElementById('customEmotion').value;
+            if (customEmotion) createSymphony(customEmotion);
+        });
+
+        document.getElementById('therapeuticBtn').addEventListener('click', toggleTherapeutic);
+
+        document.querySelectorAll('.emotion-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emotion = btn.getAttribute('data-emotion');
+                createSymphony(emotion);
+            });
+        });
+
+        document.addEventListener('mousemove', onMouseMove);
+
+        // Responsive Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>
